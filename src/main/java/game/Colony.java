@@ -63,6 +63,7 @@ public class Colony {
 
             ant.lifetime++;
             ant.timeAwayFromNest++;
+            // Ant returned food
             if (wasSearchingNest && ant.isSearchingForFood()) {
                 ant.timeAwayFromNest = 0;
                 returnedFood++;

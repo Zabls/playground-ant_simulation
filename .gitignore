@@ -1,3 +1,6 @@
-
 # Project exclude paths
 /target/
+.idea
+AntSimulation.jar
+AntSimulationGui.jar
+AntSimulation.zip

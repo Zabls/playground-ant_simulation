@@ -12,9 +12,15 @@ public class Ant {
     //region Fields
     private final Colony COLONY;
     private final Position POSITION;
+    /**
+     Normalized direction vector
+     */
     private Vector2 direction;
     private float currentRandomAngle = 0;
     private boolean isSearchingForFood = true;
+    /**
+     Global Position
+     */
     private Position nestOrFood;
 
     private final int MAX_LIFETIME;
@@ -45,10 +51,6 @@ public class Ant {
 
     public boolean isSearchingForNest() {
         return !isSearchingForFood;
-    }
-
-    private boolean hasNotFoundNestOrFood() {
-        return nestOrFood == null;
     }
 
     private boolean foundNestOrFood() {
@@ -86,6 +88,14 @@ public class Ant {
     private double getMaxRandomRotation() {
         return COLONY.getSETTING().maxRandomRotation;
     }
+
+    private int getGlobalX(int x) {
+        return x + POSITION.x;
+    }
+
+    private int getGlobalY(int y) {
+        return y + POSITION.y;
+    }
     //endregion
 
     //region Methods
@@ -103,20 +113,18 @@ public class Ant {
         }
 
         Vector2 tendTowards = loopThroughPoints();
-
-        if (tendTowards == null) { return; }
-        if (hasNotFoundNestOrFood()) { calculateNewDirection(tendTowards); }
+        if (!foundNestOrFood()) { calculateNewDirection(tendTowards); }
     }
 
     /**
-     Move game.Ant to new utils.Position. Change direction if game.Ant would be out of bounds.
+     Move ant to new {@link Position}. Change direction if ant would be out of bounds.
      */
     public void executeMove() {
         Position moveTo = angleToPosition(direction.angle());
 
         //Resolve out of Bounds
         int rotationDir = RANDOM.nextBoolean() ? 1 : -1;
-        while (isOutOfBounds(POSITION.x + moveTo.x, POSITION.y + moveTo.y)) {
+        while (isOutOfBounds(moveTo.x, moveTo.y)) {
             direction.rotate(90 * rotationDir);
             moveTo = angleToPosition(direction.angle());
         }
@@ -145,11 +153,12 @@ public class Ant {
         int[] boundingBox = calculateBoundingBox();
 
         Vector2 tendTowards = new Vector2(0, 0);
+        // Float array with one value. Value changes in sub-methods.
         float[] distanceToClosestFood = new float[]{Float.MAX_VALUE};
 
         for (int x = boundingBox[0]; x <= boundingBox[2]; x++) {
             for (int y = boundingBox[1]; y <= boundingBox[3]; y++) {
-                if (doesNotSensePixel(x, y)) { continue; }
+                if (!sensesPixel(x, y)) { continue; }
                 if (isOutOfBounds(x, y)) { continue; }
 
                 if (isSearchingForFood) {
@@ -160,63 +169,67 @@ public class Ant {
                 }
             }
         }
-        return foundNestOrFood() ? null : tendTowards;
+        return tendTowards;
     }
 
+    /**
+     Approximate a bounding box using 3-4 Points (ant, right-, left- and middle of sense cone). Uses the whole box when {@link #getHalfSenseConeAngle()
+    senseCone} greater than 90°.
+
+     @return the four corners of the bounding box
+     */
     private int[] calculateBoundingBox() {
         int[] boundingBox;
         if (getHalfSenseConeAngle() < 90) {
             //Calculate Points of triangle in which ant senses.
-            Vector2 vectorToRightPoint = Vector2.times(Vector2.rotate(direction, -getHalfSenseConeAngle()), getSenseRadius());
-            Vector2 vectorToLeftPoint = Vector2.times(Vector2.rotate(direction, getHalfSenseConeAngle()), getSenseRadius());
-            Vector2 rightPoint = Vector2.plus(POSITION.toVector2(), vectorToRightPoint);
-            Vector2 leftPoint = Vector2.plus(POSITION.toVector2(), vectorToLeftPoint);
+            Vector2 pointOnRightSide = Vector2.times(Vector2.rotate(direction, -getHalfSenseConeAngle()), getSenseRadius());
+            Vector2 pointOnLeftSide = Vector2.times(Vector2.rotate(direction, getHalfSenseConeAngle()), getSenseRadius());
 
             //Get bounding box
-            int minXBoundingBox = (int) Math.min(Math.min(rightPoint.x, leftPoint.x), POSITION.x);
-            int minYBoundingBox = (int) Math.min(Math.min(rightPoint.y, leftPoint.y), POSITION.y);
-            int maxXBoundingBox = (int) Math.max(Math.max(rightPoint.x, leftPoint.x), POSITION.x);
-            int maxYBoundingBox = (int) Math.max(Math.max(rightPoint.y, leftPoint.y), POSITION.y);
+            int minXBoundingBox = (int) Math.min(Math.min(pointOnRightSide.x, pointOnLeftSide.x), 0);
+            int minYBoundingBox = (int) Math.min(Math.min(pointOnRightSide.y, pointOnLeftSide.y), 0);
+            int maxXBoundingBox = (int) Math.max(Math.max(pointOnRightSide.x, pointOnLeftSide.x), 0);
+            int maxYBoundingBox = (int) Math.max(Math.max(pointOnRightSide.y, pointOnLeftSide.y), 0);
 
             if (getHalfSenseConeAngle() > 45) {
-                Vector2 vectorToCenterPoint = Vector2.times(direction, getSenseRadius());
-                Vector2 centerPoint = Vector2.plus(POSITION.toVector2(), vectorToCenterPoint);
+                Vector2 pointInMiddle = Vector2.times(direction, getSenseRadius());
 
-                minXBoundingBox = (int) Math.min(minXBoundingBox, centerPoint.x);
-                minYBoundingBox = (int) Math.min(minYBoundingBox, centerPoint.y);
-                maxXBoundingBox = (int) Math.max(maxXBoundingBox, centerPoint.x);
-                maxYBoundingBox = (int) Math.max(maxYBoundingBox, centerPoint.y);
+                minXBoundingBox = (int) Math.min(minXBoundingBox, pointInMiddle.x);
+                minYBoundingBox = (int) Math.min(minYBoundingBox, pointInMiddle.y);
+                maxXBoundingBox = (int) Math.max(maxXBoundingBox, pointInMiddle.x);
+                maxYBoundingBox = (int) Math.max(maxYBoundingBox, pointInMiddle.y);
             }
 
             boundingBox = new int[]{minXBoundingBox, minYBoundingBox, maxXBoundingBox, maxYBoundingBox};
         } else {
-            boundingBox = new int[]{POSITION.x - getSenseRadius(), POSITION.y - getSenseRadius(), POSITION.x + getSenseRadius(),
-                    POSITION.y + getSenseRadius()};
+            boundingBox = new int[]{-getSenseRadius(), -getSenseRadius(), getSenseRadius(), getSenseRadius()};
         }
         return boundingBox;
     }
 
     private void lookForFood(Vector2 tendTowards, int x, int y, float[] distanceToClosestFood) {
-        boolean isPixelFood = Canvas.IS_FOOD[x][y];
+        boolean isPixelFood = Canvas.IS_FOOD[getGlobalX(x)][getGlobalY(y)];
+
         if (isPixelFood) {
-            float distanceToFood = new Vector2(x - POSITION.x, y - POSITION.y).length();
+            float distanceToFood = new Vector2(x, y).length();
 
             boolean foodIsCloserThanPrevious = distanceToFood < distanceToClosestFood[0] ||
                                                (Float.compare(distanceToFood, distanceToClosestFood[0]) == 0 && RANDOM.nextDouble() < 0.5);
             if (foodIsCloserThanPrevious) {
-                nestOrFood = new Position(x, y);
+                nestOrFood = new Position(getGlobalX(x), getGlobalY(y));
                 setDirectionToNestOrFood();
                 distanceToClosestFood[0] = distanceToFood;
             }
-        } else if (hasNotFoundNestOrFood()) {
+        } else if (!foundNestOrFood()) {
             addToTendency(tendTowards, x, y, COLONY.TRAILS_TO_FOOD);
         }
     }
 
     private void lookForNest(Vector2 tendTowards, int x, int y) {
-        boolean isPixelNest = COLONY.NEST.equals(x, y);
+        boolean isPixelNest = COLONY.NEST.equals(getGlobalX(x), getGlobalY(y));
+
         if (isPixelNest) {
-            nestOrFood = new Position(x, y);
+            nestOrFood = new Position(getGlobalX(x), getGlobalY(y));
             setDirectionToNestOrFood();
             return;
         }
@@ -225,10 +238,10 @@ public class Ant {
     }
 
     private void addToTendency(Vector2 tendTowards, int x, int y, int[][] trails) {
-        Vector2 directionToPixel = new Vector2(x - POSITION.x, y - POSITION.y);
+        Vector2 directionToPixel = new Vector2(x, y);
         directionToPixel.normalize();
 
-        float trailStrengthAtPixel = trails[x][y];
+        float trailStrengthAtPixel = trails[getGlobalX(x)][getGlobalY(y)];
         directionToPixel.times(trailStrengthAtPixel);
         tendTowards.plus(directionToPixel);
     }
@@ -279,7 +292,7 @@ public class Ant {
      @param tendTowards Vector the ant tends towards
      */
     private void calculateDirectionalAngle(Vector2 tendTowards) {
-        if (tendTowards.length() != 0 && tendTowards.angle() != 0) { return; }
+        if (tendTowards.length() == 0) { return; }
 
         float angleBetween = tendTowards.angle() - direction.angle();
 
@@ -287,15 +300,17 @@ public class Ant {
         if (angleBetween < -180) { angleBetween += 360; } else if (angleBetween > 180) { angleBetween -= 360; }
 
         //Correct for normalization (length might be smaller than 1 because of float values)
-        final float strength = Math.max(1, tendTowards.length());
+        float strength = Math.max(1, tendTowards.length());
 
         //Approx number of Squares within circle sector. Formular: r^2 * (angle / 2)
-        final float numberOfSquaresInSense = (float) (Math.pow(getSenseRadius(), 2) * Math.toRadians(getHalfSenseConeAngle()));
-        final float maxPossibleStrength = numberOfSquaresInSense * getMaxTrailStrength();
+        final float numberOfSquaresAntSenses = (float) (Math.pow(getSenseRadius(), 2) * Math.toRadians(getHalfSenseConeAngle()));
+        final float maxPossibleStrength = numberOfSquaresAntSenses * getMaxTrailStrength();
 
         //Rotate towards angleBetween. Higher strength means more rotation.
         //Logs are used to make smaller values more important
-        final float rotateBy = (float) (angleBetween * 5 * Math.log(strength / maxPossibleStrength + 1) / Math.log(2));
+        float strengthLog = (float) (Math.log(strength) / Math.log(2));
+        float maxStrengthLog = (float) (Math.log(maxPossibleStrength) / Math.log(2));
+        float rotateBy = (float) (2 * strengthLog / maxStrengthLog) * angleBetween;
 
         if (angleBetween > getHalfSenseConeAngle() / 6) {
             direction.rotate((float) Math.min(getMaxRotation(), rotateBy));
@@ -305,8 +320,8 @@ public class Ant {
     }
 
     /**
-     Change angle by {@link #currentRandomAngle}. Adds a new random value each iteration. {@link #currentRandomAngle} cannot be bigger than {@link Colony#getSETTING
-    MAX_RANDOM_ROTATION}
+     Change angle by {@link #currentRandomAngle}. Adds a new random value each iteration. {@link #currentRandomAngle} cannot be bigger than {@link
+    Colony#getSETTING MAX_RANDOM_ROTATION}
      */
     private void randomizeDirectionalAngle() {
         currentRandomAngle /= 1.05;
@@ -320,10 +335,10 @@ public class Ant {
      @param y y value of pixel
      @return 'true' if pixel is relevant to ants sense
      */
-    private boolean doesNotSensePixel(int x, int y) {
-        Vector2 pixel = new Vector2(x - POSITION.x, y - POSITION.y);
-        if (pixel.length() > getSenseRadius()) { return true; }
-        return !isInFrontOfAnt(pixel);
+    private boolean sensesPixel(int x, int y) {
+        Vector2 pixel = new Vector2(x, y);
+        if (pixel.length() > getSenseRadius()) { return false; }
+        return isInFrontOfAnt(pixel);
     }
 
     /**
@@ -336,7 +351,7 @@ public class Ant {
     }
 
     private void turnAround() {
-        direction.rotate(180 + 90 * (RANDOM.nextFloat() - 0.5f));
+        direction.rotate(180);
     }
 
     /**
@@ -354,6 +369,8 @@ public class Ant {
      @return 'true' if out of Bounds
      */
     private boolean isOutOfBounds(int x, int y) {
+        x = x + POSITION.x;
+        y = y + POSITION.y;
         return x < 0 || x >= CanvasSetting.canvasSizeX || y < 0 || y >= CanvasSetting.canvasSizeY;
     }
     //endregion
