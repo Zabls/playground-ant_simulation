@@ -140,7 +140,7 @@ public class Ant {
                 Canvas.IS_FOOD[POSITION.x][POSITION.y] = false;
             }
             turnAround();
-        } else if (!isSearchingForFood && COLONY.NEST.equals(POSITION)) {
+        } else if (!isSearchingForFood && POSITION.distanceTo(COLONY.NEST) < 5) {
             //If is on Nest
             isSearchingForFood = true;
             nestOrFood = null;
@@ -164,8 +164,14 @@ public class Ant {
                 if (isSearchingForFood) {
                     lookForFood(tendTowards, x, y, distanceToClosestFood);
                 } else {
-                    lookForNest(tendTowards, x, y);
-                    if (foundNestOrFood()) { return null; }
+                    if (POSITION.distanceTo(COLONY.NEST) < getSenseRadius()) {
+                        nestOrFood = COLONY.NEST;
+                        setDirectionToNestOrFood();
+                        return null;
+                    } else {
+                        lookForNest(tendTowards, x, y);
+                        if (foundNestOrFood()) { return null; }
+                    }
                 }
             }
         }
@@ -226,14 +232,6 @@ public class Ant {
     }
 
     private void lookForNest(Vector2 tendTowards, int x, int y) {
-        boolean isPixelNest = COLONY.NEST.equals(getGlobalX(x), getGlobalY(y));
-
-        if (isPixelNest) {
-            nestOrFood = new Position(getGlobalX(x), getGlobalY(y));
-            setDirectionToNestOrFood();
-            return;
-        }
-
         addToTendency(tendTowards, x, y, COLONY.TRAILS_TO_NEST);
     }
 
@@ -308,9 +306,9 @@ public class Ant {
 
         //Rotate towards angleBetween. Higher strength means more rotation.
         //Logs are used to make smaller values more important
-        float strengthLog = (float) (Math.log(strength) / Math.log(2));
-        float maxStrengthLog = (float) (Math.log(maxPossibleStrength) / Math.log(2));
-        float rotateBy = (float) (2 * strengthLog / maxStrengthLog) * angleBetween;
+        float strengthLog = (float) (Math.log(strength));
+        float maxStrengthLog = (float) (Math.log(maxPossibleStrength));
+        float rotateBy = (2 * strengthLog / maxStrengthLog) * angleBetween;
 
         if (angleBetween > getHalfSenseConeAngle() / 6) {
             direction.rotate((float) Math.min(getMaxRotation(), rotateBy));

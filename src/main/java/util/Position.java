@@ -30,5 +30,9 @@ public class Position {
     public boolean equals(int x, int y) {
         return (this.x == x && this.y == y);
     }
+
+    public float distanceTo(Position position) {
+        return (float) Math.sqrt((x - position.x) * (x - position.x) + (y - position.y) * (y - position.y));
+    }
     //endregion
 }
